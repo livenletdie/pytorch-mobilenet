@@ -3,8 +3,8 @@ Imagenet data is processed [as described here](https://github.com/facebook/fb.re
 
 Options Implemented:
 - `Residual Connection`: Residual connection around each depthwise separable convolution. 
-- `Squeeze-and-Excitation Channel Attention`: Based on the [Squeeze-and-Excitation paper](https://arxiv.org/abs/1709.01507), I add the squeeze and excite block after every depthwise separable convolution. 
-- `Group Convolutions`: For the 3x3 convolutions in the depthwise seperable convolutions, I allow them to have group size of greater than 1. 
+- `Squeeze-and-Excitation Channel Attention`: Based on the [Squeeze-and-Excitation paper](https://arxiv.org/abs/1709.01507), a squeeze-and-excite block after every depthwise separable convolution. 
+- `Group Convolutions`: For the 3x3 convolutions in the depthwise seperable structures, group size is increased to 4. 
 
 Learning rate schedule: I use Nesterov and cosine learning rate starting at LR = 0.05 and train it for 90 epochs.
 
@@ -17,7 +17,7 @@ Learning rate schedule: I use Nesterov and cosine learning rate starting at LR =
 | mobilenetra  | Using residual connections and squeeze-and-excite blocks | 73.48|
 | mobilenetrag4  | Using residual connections, squeeze-excite blocks and group size of 4 in 3x3s | 74.13|
 
-`Command to train`: python main.py -a <ARCH> -b 256 --cosineLR --lr 0.05 --nesterov /imagenet/
-where <ARCH> is one of the options from the first column in the above table.
+`Command to train`: python main.py -a ARCH -b 256 --cosineLR --lr 0.05 --nesterov /imagenet/
+where ARCH is one of the options from the first column in the above table.
 
 
