@@ -1,7 +1,8 @@
 import argparse
-import os
+import os, sys
 import shutil
 import time
+import numpy as np
 
 import torch
 import torch.nn as nn
@@ -12,6 +13,7 @@ import torch.utils.data
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.models as models
+import models as modelsLocal
 
 
 model_names = sorted(name for name in models.__dict__
@@ -38,6 +40,12 @@ parser.add_argument('-b', '--batch-size', default=256, type=int,
                     metavar='N', help='mini-batch size (default: 256)')
 parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
                     metavar='LR', help='initial learning rate')
+parser.add_argument('--lrStep', default=30, type=int,
+                    metavar='LRStep', help='learning rate reduction step')
+parser.add_argument('--cosineLR', dest='cosineLR', action='store_true',
+                    help='use cosine LR instead of step-based')
+parser.add_argument('--nesterov', action='store_true',
+                    help='use nesterov in optim')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
                     help='momentum')
 parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float,
@@ -53,53 +61,6 @@ parser.add_argument('--pretrained', dest='pretrained', action='store_true',
 
 best_prec1 = 0
 
-class Net(nn.Module):
-    def __init__(self):
-        super(Net, self).__init__()
-
-        def conv_bn(inp, oup, stride):
-            return nn.Sequential(
-                nn.Conv2d(inp, oup, 3, stride, 1, bias=False),
-                nn.BatchNorm2d(oup),
-                nn.ReLU(inplace=True)
-            )
-
-        def conv_dw(inp, oup, stride):
-            return nn.Sequential(
-                nn.Conv2d(inp, inp, 3, stride, 1, groups=inp, bias=False),
-                nn.BatchNorm2d(inp),
-                nn.ReLU(inplace=True),
-    
-                nn.Conv2d(inp, oup, 1, 1, 0, bias=False),
-                nn.BatchNorm2d(oup),
-                nn.ReLU(inplace=True),
-            )
-
-        self.model = nn.Sequential(
-            conv_bn(  3,  32, 2), 
-            conv_dw( 32,  64, 1),
-            conv_dw( 64, 128, 2),
-            conv_dw(128, 128, 1),
-            conv_dw(128, 256, 2),
-            conv_dw(256, 256, 1),
-            conv_dw(256, 512, 2),
-            conv_dw(512, 512, 1),
-            conv_dw(512, 512, 1),
-            conv_dw(512, 512, 1),
-            conv_dw(512, 512, 1),
-            conv_dw(512, 512, 1),
-            conv_dw(512, 1024, 2),
-            conv_dw(1024, 1024, 1),
-            nn.AvgPool2d(7),
-        )
-        self.fc = nn.Linear(1024, 1000)
-
-    def forward(self, x):
-        x = self.model(x)
-        x = x.view(-1, 1024)
-        x = self.fc(x)
-        return x
-
 def main():
     global args, best_prec1
     args = parser.parse_args()
@@ -110,8 +71,9 @@ def main():
         model = models.__dict__[args.arch](pretrained=True)
     else:
         print("=> creating model '{}'".format(args.arch))
-        if args.arch.startswith('mobilenet'):
-            model = Net()
+        if args.arch.startswith('mobilenet') and hasattr(modelsLocal, args.arch):
+            localModel = getattr(modelsLocal, args.arch)
+            model = localModel()
             print(model)
         else:
             model = models.__dict__[args.arch]()
@@ -127,7 +89,8 @@ def main():
 
     optimizer = torch.optim.SGD(model.parameters(), args.lr,
                                 momentum=args.momentum,
-                                weight_decay=args.weight_decay)
+                                weight_decay=args.weight_decay,
+                                nesterov = args.nesterov)
 
    # optionally resume from a checkpoint
     if args.resume:
@@ -176,7 +139,7 @@ def main():
         return
 
     for epoch in range(args.start_epoch, args.epochs):
-        adjust_learning_rate(optimizer, epoch)
+        adjust_learning_rate(optimizer, epoch, args)
 
         # train for one epoch
         train(train_loader, model, criterion, optimizer, epoch)
@@ -313,9 +276,10 @@ class AverageMeter(object):
         self.avg = self.sum / self.count
 
 
-def adjust_learning_rate(optimizer, epoch):
+def adjust_learning_rate(optimizer, epoch, args):
     """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
-    lr = args.lr * (0.1 ** (epoch // 30))
+    lr = args.lr * (0.1 ** (epoch // args.lrStep))
+    if args.cosineLR: lr = args.lr * 0.5 * (np.cos(epoch * np.pi/args.epochs) + 1)
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
